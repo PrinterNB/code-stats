@@ -53,6 +53,9 @@ input[type="text"] { font-family: var(--mono); font-size: 12px; }
 }
 .chip:hover { border-color: var(--accent); color: var(--text-1); }
 .chip .n { opacity: .55; font-variant-numeric: tabular-nums; }
+.chip.act { font-family: var(--sans); color: var(--text-1); border-color: var(--text-2); }
+.chip.act:hover { border-color: var(--accent); }
+.chip-sep { width: 1px; height: 18px; background: var(--hairline); align-self: center; margin: 0 4px; }
 .chip.on { background: rgba(57,135,229,0.15); border-color: var(--accent); color: var(--text-1); }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
 button.primary {
@@ -96,6 +99,7 @@ td { font-variant-numeric: tabular-nums; }
 td.path { font-family: var(--mono); max-width: 420px; overflow: hidden; text-overflow: ellipsis; }
 td .ext { font-family: var(--mono); color: var(--accent); }
 .empty-note { color: var(--text-mut); font-size: 12px; padding: 8px 0; }
+.empty-note:empty { display: none; }
 #report { display: none; }
 @media print { .noprint { display: none; } }
 </style>
@@ -128,7 +132,7 @@ td .ext { font-family: var(--mono); color: var(--accent); }
         1. Click <b>Choose project folder</b> and pick a project.<br>
         2. The scan runs live in this tab (progress shown above).<br>
         3. Stats, charts and tables render below as it completes.<br>
-        4. Use the <b>Filter by file type</b> bar to zoom into one extension.<br>
+        4. Use the <b>Filter by file type</b> bar to show only the extensions you care about.<br>
         5. <b>Download report (JSON)</b> saves the full raw dataset.
       </div>
     </div>
@@ -138,6 +142,7 @@ td .ext { font-family: var(--mono); color: var(--accent); }
     <div class="card" style="margin-bottom:14px">
       <strong style="font-size:13px">Filter by file type</strong>
       <div class="chips" id="ftypes" style="margin-top:8px"></div>
+      <div class="empty-note" id="ftype-notice" style="margin-top:8px"></div>
     </div>
     <h2>Summary</h2>
     <div class="tiles" id="tiles"></div>
@@ -171,7 +176,7 @@ const el = {
   excl: $("excl"), chips: $("chips"), maxsize: $("maxsize"),
   pick: $("pick"), again: $("again"), dl: $("dl"),
   progress: $("progress"), errbox: $("errbox"), noapi: $("noapi"),
-  report: $("report"), tiles: $("tiles"), ftypes: $("ftypes"),
+  report: $("report"), tiles: $("tiles"), ftypes: $("ftypes"), fnotice: $("ftype-notice"),
   cLines: $("c-lines"), cFiles: $("c-files"), cDepth: $("c-depth"), cDist: $("c-dist"),
   scanmeta: $("scanmeta"),
 };
@@ -187,8 +192,8 @@ const LANG = {
   lua: "Lua", r: "R", pl: "Perl", xml: "XML", svg: "SVG", wasm: "WebAssembly",
   graphql: "GraphQL", gql: "GraphQL", proto: "Protobuf", tf: "Terraform",
   nim: "Nim", zig: "Zig", ex: "Elixir", exs: "Elixir", elm: "Elm",
-  fs: "F#", ml: "OCaml", hs: "Haskell", jl: "Julia", zig: "Zig",
-  txt: "Plain text", csv: "CSV", tsv: "TSV", lock: "Lockfile", wasm: "WebAssembly",
+  fs: "F#", ml: "OCaml", hs: "Haskell", jl: "Julia",
+  txt: "Plain text", csv: "CSV", tsv: "TSV", lock: "Lockfile",
   env: "Env config", cfg: "Config", ini: "Config", conf: "Config",
 };
 const BINARY_EXT = new Set(("png jpg jpeg gif bmp ico tiff webp avif svgz heic mp4 mov mkv avi webm wmv m4a mp3 wav ogg flac aac mid woff woff2 otf ttf eot eot pdf epub doc docx xls xlsx ppt pptx jar class dll so exe msi sys pdb dylib o a obj lib pyc pyo pycache pkl pkl pickle npy npz h5 zip tar gz bz2 xz 7z rar tgz cab ico2 psp vm vmx vmdk dockerfile.lock sqlite db db3 ndjson").split(" "));
@@ -216,7 +221,8 @@ function median(arr) {
   return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const state = { running: false, files: [], errors: [], rootName: "", filter: null, _meta: {} };
+const state = { running: false, files: [], errors: [], rootName: "", selected: null, _meta: {} };
+// state.selected: null = every extension shown; otherwise a Set of extension names to show.
 
 function readExcludes() {
   return el.excl.value.split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
@@ -274,7 +280,7 @@ async function scanFile(handle, relPath) {
 }
 
 async function scan() {
-  state.files = []; state.errors = []; state.filter = null; state._meta = {};
+  state.files = []; state.errors = []; state.selected = null; state._meta = {};
   el.report.style.display = "none";
   el.errbox.textContent = "";
   setProgress("");
@@ -305,7 +311,6 @@ async function scan() {
       for await (const entry of job.h.values()) entries.push(entry);
     } catch (e) {
       addErr("List " + job.rel + ": " + ((e && e.message) || e));
-      processed++;
       setProgress("Scanned " + nf(processed) + " files · " + folders + " folders");
       continue;
     }
@@ -375,7 +380,7 @@ function renderTiles(view, meta) {
     ["Total characters", nf(totalChars)],
     ["Total size", humanBytes(totalBytes)],
     ["Text files", nf(textF.length)],
-    ["Binary files", nf(F.length - textF.length)],
+    ["Binary / unreadable files", nf(F.length - textF.length)],
     ["Empty files", nf(empty)],
     ["Avg lines / text file", textF.length ? nf(totalLines / textF.length) : "—"],
     ["Median lines / text file", textF.length ? nf(median(lineArr)) : "—"],
@@ -445,7 +450,8 @@ function makeTable(node, cols, rows) {
     node.innerHTML = "<thead><tr>" +
       cols.map((c, i) => '<th class="' + (sortKey === i ? "sorted" : "") + '" data-i="' + i + '">' + c.label + (sortKey === i ? (asc ? " ↑" : " ↓") : "") + '</th>').join("") +
       "</tr></thead><tbody>" +
-      sorted.map(r => "<tr>" + cols.map(c => c.cell(r)).join("") + "</tr>").join("") +
+      (sorted.length ? sorted.map(r => "<tr>" + cols.map(c => c.cell(r)).join("") + "</tr>").join("") :
+        '<tr><td colspan="' + cols.length + '"><div class="empty-note" style="padding:8px">No data for the current selection.</div></td></tr>') +
       "</tbody>";
     node.querySelectorAll("th").forEach(th => th.onclick = () => {
       const i = +th.dataset.i;
@@ -531,7 +537,8 @@ function downloadJSON() {
   if (!state.files.length) return;
   const report = {
     generatedAt: new Date().toISOString(), rootName: state.rootName,
-    excludes: readExcludes(), maxFileSizeMB: parseFloat(el.maxsize.value), filter: state.filter,
+    excludes: readExcludes(), maxFileSizeMB: parseFloat(el.maxsize.value),
+    extFilter: state.selected ? [...state.selected] : null,
     summary: {
       files: state.files.length,
       textFiles: state.files.filter(f => f.type === "text").length,
@@ -549,31 +556,60 @@ function downloadJSON() {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 function filteredFiles() {
-  return state.filter ? state.files.filter(f => f.ext === state.filter) : state.files;
+  return state.selected ? state.files.filter(f => state.selected.has(f.ext)) : state.files;
 }
+function allExts() {
+  const s = new Set();
+  for (const f of state.files) s.add(f.ext);
+  return s;
+}
+function toggleExt(ext) {
+  if (!state.selected) { // everything was on -> turn just this one off
+    const s = allExts(); s.delete(ext); state.selected = s;
+  } else if (state.selected.has(ext)) state.selected.delete(ext);
+  else state.selected.add(ext);
+  renderAll();
+}
+function selectAll() { state.selected = null; renderAll(); }
+function deselectAll() { state.selected = new Set(); renderAll(); }
 function renderFilterBar() {
   const counts = {};
   for (const f of state.files) counts[f.ext] = (counts[f.ext] || 0) + 1;
   const exts = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
-  el.ftypes.innerHTML = "";
-  const make = (ext, label, count) => {
+  const bar = el.ftypes;
+  bar.innerHTML = "";
+  const act = (label, fn) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "chip act"; b.textContent = label;
+    b.onclick = fn; bar.appendChild(b);
+  };
+  act("select all", selectAll);
+  act("deselect all", deselectAll);
+  const sep = document.createElement("span");
+  sep.className = "chip-sep"; bar.appendChild(sep);
+  exts.forEach(e => {
     const b = document.createElement("button");
     b.type = "button"; b.className = "chip";
-    b.innerHTML = label + ' <span class="n">' + nf(count) + "</span>";
-    if ((state.filter || null) === (ext || null)) b.classList.add("on");
-    b.onclick = () => applyFilter(ext || null);
-    el.ftypes.appendChild(b);
-  };
-  make(null, "All files", state.files.length);
-  exts.forEach(e => make(e, e, counts[e]));
-}
-function applyFilter(ext) {
-  state.filter = ext;
-  renderAll();
+    b.innerHTML = esc(e) + ' <span class="n">' + nf(counts[e]) + "</span>";
+    if (!state.selected || state.selected.has(e)) b.classList.add("on");
+    b.title = (state.selected && !state.selected.has(e)) ? "Click to include " + e : "Click to hide " + e;
+    b.onclick = () => toggleExt(e);
+    bar.appendChild(b);
+  });
 }
 function renderAll() {
   const view = computeView(filteredFiles());
   renderFilterBar();
+  if (!view.F.length) {
+    el.fnotice.textContent = "No files match the current selection — click an extension to include it, or use “select all”. " +
+      nf(state.files.length) + " files are hidden by the filter.";
+    el.tiles.innerHTML = "";
+    [el.cLines, el.cFiles, el.cDepth, el.cDist].forEach(n => n.innerHTML = "");
+    ["t-lines", "t-size", "t-mod", "t-dirfiles", "t-dirlines", "t-types", "t-dupes"].forEach(id => { const n = $(id); n.innerHTML = ""; });
+    el.scanmeta.textContent = "";
+    return;
+  }
+  el.fnotice.textContent = "";
   renderTiles(view, state._meta);
   renderCharts(view);
   renderFileTables(view);
@@ -581,7 +617,7 @@ function renderAll() {
   renderTypeTable(view);
   renderDupes(view);
   el.scanmeta.textContent = "scanned " + state.rootName + " · " + state.files.length + " files" +
-    (state.filter ? " · filtered: " + state.filter : "") +
+    (state.selected ? " · showing " + state.selected.size + " of " + allExts().size + " extensions" : "") +
     " · " + (state._meta.folders || 0) + " folders · " + state.errors.length + " errors";
 }
 function renderReport(meta) {
