@@ -371,7 +371,7 @@ function computeView(files) {
   return { F, textF, lineArr, totalLines, totalChars, totalBytes, empty, exts, longestPath, longestName, longestLineRec, day30, cfiles, lfiles, dupNames, dupGroups };
 }
 function renderTiles(view, meta) {
-  const { F, textF, totalLines, totalChars, totalBytes, empty, exts, longestPath, longestName, longestLineRec, day30, dupGroups, cfiles, lfiles } = view;
+  const { F, textF, lineArr, totalLines, totalChars, totalBytes, empty, exts, longestPath, longestName, longestLineRec, day30, dupGroups, cfiles, lfiles } = view;
   const tiles = [
     ["Total files", nf(F.length)],
     ["Total folders", nf(meta.folders)],
