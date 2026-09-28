@@ -52,6 +52,7 @@ input[type="text"] { font-family: var(--mono); font-size: 12px; }
   cursor: pointer;
 }
 .chip:hover { border-color: var(--accent); color: var(--text-1); }
+.chip .n { opacity: .55; font-variant-numeric: tabular-nums; }
 .chip.on { background: rgba(57,135,229,0.15); border-color: var(--accent); color: var(--text-1); }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
 button.primary {
@@ -127,12 +128,17 @@ td .ext { font-family: var(--mono); color: var(--accent); }
         1. Click <b>Choose project folder</b> and pick a project.<br>
         2. The scan runs live in this tab (progress shown above).<br>
         3. Stats, charts and tables render below as it completes.<br>
-        4. <b>Download report (JSON)</b> saves the full raw dataset.
+        4. Use the <b>Filter by file type</b> bar to zoom into one extension.<br>
+        5. <b>Download report (JSON)</b> saves the full raw dataset.
       </div>
     </div>
   </div>
 
   <div id="report">
+    <div class="card" style="margin-bottom:14px">
+      <strong style="font-size:13px">Filter by file type</strong>
+      <div class="chips" id="ftypes" style="margin-top:8px"></div>
+    </div>
     <h2>Summary</h2>
     <div class="tiles" id="tiles"></div>
 
@@ -165,7 +171,7 @@ const el = {
   excl: $("excl"), chips: $("chips"), maxsize: $("maxsize"),
   pick: $("pick"), again: $("again"), dl: $("dl"),
   progress: $("progress"), errbox: $("errbox"), noapi: $("noapi"),
-  report: $("report"), tiles: $("tiles"),
+  report: $("report"), tiles: $("tiles"), ftypes: $("ftypes"),
   cLines: $("c-lines"), cFiles: $("c-files"), cDepth: $("c-depth"), cDist: $("c-dist"),
   scanmeta: $("scanmeta"),
 };
@@ -210,7 +216,7 @@ function median(arr) {
   return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const state = { running: false, files: [], errors: [], rootName: "" };
+const state = { running: false, files: [], errors: [], rootName: "", filter: null, _meta: {} };
 
 function readExcludes() {
   return el.excl.value.split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
@@ -268,7 +274,7 @@ async function scanFile(handle, relPath) {
 }
 
 async function scan() {
-  state.files = []; state.errors = [];
+  state.files = []; state.errors = []; state.filter = null; state._meta = {};
   el.report.style.display = "none";
   el.errbox.textContent = "";
   setProgress("");
@@ -339,8 +345,8 @@ async function scan() {
 }
 function resetBtns() { el.pick.disabled = false; el.again.hidden = false; el.dl.disabled = !state.files.length; }
 
-function renderTiles(meta) {
-  const F = state.files;
+function computeView(files) {
+  const F = files;
   const textF = F.filter(f => f.type === "text");
   const lineArr = textF.map(f => f.lines);
   const totalLines = lineArr.reduce((a, b) => a + b, 0);
@@ -357,7 +363,10 @@ function renderTiles(meta) {
   const dupNames = {};
   for (const f of F) { const k = f.name + "|" + f.size; (dupNames[k] ||= []).push(f); }
   const dupGroups = Object.values(dupNames).filter(g => g.length > 1);
-
+  return { F, textF, lineArr, totalLines, totalChars, totalBytes, empty, exts, longestPath, longestName, longestLineRec, day30, cfiles, lfiles, dupNames, dupGroups };
+}
+function renderTiles(view, meta) {
+  const { F, textF, totalLines, totalChars, totalBytes, empty, exts, longestPath, longestName, longestLineRec, day30, dupGroups, cfiles, lfiles } = view;
   const tiles = [
     ["Total files", nf(F.length)],
     ["Total folders", nf(meta.folders)],
@@ -382,7 +391,6 @@ function renderTiles(meta) {
   el.tiles.innerHTML = tiles.map(([k, v, d]) =>
     '<div class="tile"><div class="k">' + k + '</div><div class="v">' + esc(v) + '</div>' + (d ? '<div class="d">' + esc(d) + '</div>' : '') + '</div>'
   ).join("");
-  state._extra = { totalBytes, totalLines, dupNames: dupNames, textF };
 }
 
 function barChart(node, rows, colorFn) {
@@ -410,8 +418,8 @@ function colorForExt(ext) {
   return extColor[ext];
 }
 
-function renderCharts() {
-  const F = state.files, textF = state._extra.textF;
+function renderCharts(view) {
+  const F = view.F, textF = view.textF;
   const byExtFiles = {}, byExtLines = {};
   for (const f of F) (byExtFiles[f.ext] ||= { label: f.ext, value: 0 }).value++;
   for (const f of textF) { const e = byExtLines[f.ext] ||= { label: f.ext, value: 0 }; e.value += f.lines; }
@@ -450,11 +458,11 @@ function makeTable(node, cols, rows) {
 const pathCell = p => '<td class="path" title="' + esc(p) + '">' + esc(p) + '</td>';
 const numCell = v => "<td>" + nf(v) + "</td>";
 
-function renderFileTables() {
-  const textF = state.files.filter(f => f.type === "text");
+function renderFileTables(view) {
+  const F = view.F, textF = view.textF;
   const top = arr => arr.slice().sort((a, b) => b.lines - a.lines).slice(0, 15);
-  const topBy = (key, n) => state.files.slice().sort((a, b) => b[key] - a[key]).slice(0, n);
-  const topMod = state.files.slice().sort((a, b) => (b.modified || 0) - (a.modified || 0)).slice(0, 15);
+  const topBy = (key, n) => F.slice().sort((a, b) => b[key] - a[key]).slice(0, n);
+  const topMod = F.slice().sort((a, b) => (b.modified || 0) - (a.modified || 0)).slice(0, 15);
   const sizeCol = { label: "size", val: r => r.size, cell: r => "<td>" + humanBytes(r.size) + "</td>" };
   const linesCol = { label: "lines", val: r => r.lines, cell: r => numCell(r.lines) };
   const extCol = { label: "type", val: r => r.ext, cell: r => '<td><span class="ext">' + esc(r.ext) + "</span></td>" };
@@ -467,18 +475,18 @@ function renderFileTables() {
 // small helper so we can compose column lists without repetition
 function baseCol2(a, b) { return [{ label: "path", val: r => r.path, cell: r => pathCell(r.path) }, a, b]; }
 
-function topDirs(n, byLines) {
+function topDirs(view, n, byLines) {
   const map = {};
-  for (const f of state.files) {
+  for (const f of view.F) {
     const dir = f.path.includes("/") ? f.path.slice(0, f.path.lastIndexOf("/")) : "(root)";
     const m = map[dir] ||= { dir, files: 0, lines: 0, bytes: 0 };
     m.files++; m.bytes += f.size; if (byLines) m.lines += f.lines;
   }
   return Object.values(map).sort((a, b) => (b.files || 0) - (a.files || 0) || b.lines - a.lines).slice(0, n);
 }
-function renderDirTables() {
-  const rowsF = topDirs(15, false);
-  const rowsL = topDirs(15, true).sort((a, b) => b.lines - a.lines);
+function renderDirTables(view) {
+  const rowsF = topDirs(view, 15, false);
+  const rowsL = topDirs(view, 15, true).sort((a, b) => b.lines - a.lines);
   makeTable($("t-dirfiles"), [
     { label: "directory", val: r => r.dir, cell: r => '<td class="path" title="' + esc(r.dir) + '">' + esc(r.dir) + "</td>" },
     { label: "files", val: r => r.files, cell: r => numCell(r.files) },
@@ -490,9 +498,9 @@ function renderDirTables() {
     { label: "files", val: r => r.files, cell: r => numCell(r.files) },
   ], rowsL);
 }
-function renderTypeTable() {
+function renderTypeTable(view) {
   const byExt = {};
-  for (const f of state.files) {
+  for (const f of view.F) {
     const m = byExt[f.ext] ||= { ext: f.ext, files: 0, lines: 0, bytes: 0 };
     m.files++; m.lines += f.lines; m.bytes += f.size;
   }
@@ -506,8 +514,8 @@ function renderTypeTable() {
     { label: "avg lines/file", val: r => r.files ? r.lines / r.files : 0, cell: r => r.files ? "<td>" + nf(r.lines / r.files) + "</td>" : "<td>—</td>" },
   ], rows);
 }
-function renderDupes() {
-  const groups = Object.values(state._extra.dupNames).filter(g => g.length > 1)
+function renderDupes(view) {
+  const groups = Object.values(view.dupNames).filter(g => g.length > 1)
     .map(g => ({ name: g[0].name, paths: g, size: g[0].size }))
     .sort((a, b) => b.paths.length - a.paths.length).slice(0, 15);
   if (!groups.length) { $("t-dupes").innerHTML = '<div class="empty-note">No duplicate name+size groups found.</div>'; return; }
@@ -523,12 +531,12 @@ function downloadJSON() {
   if (!state.files.length) return;
   const report = {
     generatedAt: new Date().toISOString(), rootName: state.rootName,
-    excludes: readExcludes(), maxFileSizeMB: parseFloat(el.maxsize.value),
+    excludes: readExcludes(), maxFileSizeMB: parseFloat(el.maxsize.value), filter: state.filter,
     summary: {
       files: state.files.length,
-      textFiles: state._extra.textF.length,
-      totalLines: state._extra.totalLines,
-      totalBytes: state._extra.totalBytes,
+      textFiles: state.files.filter(f => f.type === "text").length,
+      totalLines: state.files.reduce((a, f) => a + f.lines, 0),
+      totalBytes: state.files.reduce((a, f) => a + (f.size || 0), 0),
       errors: state.errors.length,
     },
     files: state.files, errors: state.errors,
@@ -540,16 +548,47 @@ function downloadJSON() {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
+function filteredFiles() {
+  return state.filter ? state.files.filter(f => f.ext === state.filter) : state.files;
+}
+function renderFilterBar() {
+  const counts = {};
+  for (const f of state.files) counts[f.ext] = (counts[f.ext] || 0) + 1;
+  const exts = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
+  el.ftypes.innerHTML = "";
+  const make = (ext, label, count) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "chip";
+    b.innerHTML = label + ' <span class="n">' + nf(count) + "</span>";
+    if ((state.filter || null) === (ext || null)) b.classList.add("on");
+    b.onclick = () => applyFilter(ext || null);
+    el.ftypes.appendChild(b);
+  };
+  make(null, "All files", state.files.length);
+  exts.forEach(e => make(e, e, counts[e]));
+}
+function applyFilter(ext) {
+  state.filter = ext;
+  renderAll();
+}
+function renderAll() {
+  const view = computeView(filteredFiles());
+  renderFilterBar();
+  renderTiles(view, state._meta);
+  renderCharts(view);
+  renderFileTables(view);
+  renderDirTables(view);
+  renderTypeTable(view);
+  renderDupes(view);
+  el.scanmeta.textContent = "scanned " + state.rootName + " · " + state.files.length + " files" +
+    (state.filter ? " · filtered: " + state.filter : "") +
+    " · " + (state._meta.folders || 0) + " folders · " + state.errors.length + " errors";
+}
 function renderReport(meta) {
   if (!state.files.length && meta.folders === 0) { setProgress("Folder is empty or unreadable."); return; }
-  renderTiles(meta);
-  renderCharts();
-  renderFileTables();
-  renderDirTables();
-  renderTypeTable();
-  renderDupes();
+  state._meta = meta;
   el.report.style.display = "block";
-  el.scanmeta.textContent = "scanned " + state.rootName + " · " + state.files.length + " files · " + meta.folders + " folders · " + state.errors.length + " errors";
+  renderAll();
   if (state.errors.length) {
     el.errbox.innerHTML = "Scan errors (" + state.errors.length + "):<br>" + state.errors.slice(0, 5).map(esc).join("<br>") + (state.errors.length > 5 ? "<br>…" : "");
   }

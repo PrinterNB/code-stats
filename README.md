@@ -27,4 +27,7 @@ Scan options: skip-list of directory names (`.git`, `node_modules` by default,
 with quick-add chips like `dist`, `__pycache__`, `target`) and a max file size
 for line counting (default 10 MB).
 
+After a scan, the **Filter by file type** bar re-renders every tile, chart and
+table for a single extension (or "All files" to reset).
+
 Binary detection: extension list plus a null-byte sniff of the first 8 KB.
