@@ -108,7 +108,7 @@ td .ext { font-family: var(--mono); color: var(--accent); }
     <div class="card">
       <strong>Scan settings</strong>
       <label for="excl">Directories to skip (comma / space separated)</label>
-      <input type="text" id="excl" value=".git, node_modules">
+      <input type="text" id="excl" value=".git, node_modules, .venv, __pycache__, .pytest_cache, .pio">
       <div class="chips" id="chips"></div>
       <label for="maxsize">Max file size to read for line counts (MB)</label>
       <input type="number" id="maxsize" value="10" min="0.1" step="0.5" style="width:120px">
@@ -186,7 +186,7 @@ const LANG = {
   env: "Env config", cfg: "Config", ini: "Config", conf: "Config",
 };
 const BINARY_EXT = new Set(("png jpg jpeg gif bmp ico tiff webp avif svgz heic mp4 mov mkv avi webm wmv m4a mp3 wav ogg flac aac mid woff woff2 otf ttf eot eot pdf epub doc docx xls xlsx ppt pptx jar class dll so exe msi sys pdb dylib o a obj lib pyc pyo pycache pkl pkl pickle npy npz h5 zip tar gz bz2 xz 7z rar tgz cab ico2 psp vm vmx vmdk dockerfile.lock sqlite db db3 ndjson").split(" "));
-const QUICK_EXCLUDES = ["dist","build","__pycache__",".next",".venv","venv","target","vendor","bin","obj",".cache"];
+const QUICK_EXCLUDES = [".venv","venv","__pycache__",".pytest_cache",".pio",".mypy_cache",".ruff_cache","dist","build",".next","target","vendor","bin","obj",".cache",".idea",".vs",".gradle"];
 const fmt = new Intl.NumberFormat("en-US");
 const nf = n => fmt.format(Math.round(n || 0));
 function humanBytes(n) {
@@ -199,7 +199,7 @@ function humanBytes(n) {
 function extOf(name) {
   const b = String(name).toLowerCase();
   const i = b.lastIndexOf(".");
-  if (i < 0 || i === b.length - 1) return "(no ext)";
+  if (i <= 0 || i === b.length - 1) return "(no ext)"; // dotfiles like .gitignore have no ext
   return b.slice(i + 1).slice(0, 8);
 }
 function depthOf(rel) { return rel.split("/").length; }
@@ -254,10 +254,11 @@ async function scanFile(handle, relPath) {
     path: relPath, name: handle.name, size: f.size, ext: extOf(handle.name),
     modified: null, type: null, lines: 0, chars: 0, blank: 0, comment: 0, crlf: 0, longestLine: 0,
   };
-  try { rec.modified = (await handle.getProperties()).lastModified; } catch { /* keep null */ }
+  rec.modified = f.lastModified || null;
+  if (!rec.modified) { try { rec.modified = (await handle.getProperties()).lastModified; } catch { /* keep null */ } }
   state.files.push(rec);
   if (f.size > maxBytes()) { rec.type = "skipped"; return; }
-  const isBin = await sniffBinary(handle);
+  const isBin = await sniffBinary(f);
   rec.type = isBin ? "binary" : "text";
   if (isBin) return;
   try {
@@ -555,9 +556,11 @@ function renderReport(meta) {
   el.report.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 function buildChips() {
+  const current = new Set(readExcludes());
   QUICK_EXCLUDES.forEach(name => {
     const b = document.createElement("button");
     b.type = "button"; b.className = "chip"; b.textContent = name; b.dataset.name = name;
+    if (current.has(name)) b.classList.add("on");
     b.onclick = () => {
       const ex = readExcludes();
       if (ex.includes(name)) {
@@ -576,11 +579,10 @@ window.addEventListener("DOMContentLoaded", () => {
     el.noapi.innerHTML = '<div class="errbox" style="margin-top:12px">Your browser does not support the File System Access API. Open this page in <b>Chrome</b> or <b>Edge</b>.</div>';
     el.pick.disabled = true;
   }
-  el.pick.onclick = () => { buildChipsOnce(); scan(); };
+  el.pick.onclick = () => scan();
   el.again.onclick = () => scan();
   el.dl.onclick = downloadJSON;
-  let chipsBuilt = false;
-  function buildChipsOnce() { if (!chipsBuilt) { buildChips(); chipsBuilt = true; } }
+  buildChips();
 });
 </script>
 </body>
