@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Code Stats</title>
+<style>
+:root {
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --surface-2: #20201e;
+  --border: rgba(255,255,255,0.10);
+  --hairline: #2c2c2a;
+  --text-1: #ffffff;
+  --text-2: #c3c2b7;
+  --text-mut: #898781;
+  --accent: #3987e5;
+  --mono: ui-monospace, "Cascadia Code", "Segoe UI Mono", Consolas, monospace;
+  --sans: system-ui, "Segoe UI", sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--page);
+  color: var(--text-1);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.45;
+}
+.wrap { max-width: 1180px; margin: 0 auto; padding: 24px 20px 60px; }
+h1 { font-size: 20px; margin: 0 0 4px; font-weight: 600; }
+.sub { color: var(--text-mut); font-size: 12px; margin-bottom: 20px; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-2); margin: 28px 0 12px; font-weight: 600; }
+
+/* cards */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 800px) { .grid2 { grid-template-columns: 1fr; } }
+
+/* controls */
+label { display: block; font-size: 12px; color: var(--text-2); margin: 10px 0 4px; }
+input[type="text"], input[type="number"] {
+  width: 100%; background: var(--surface-2); color: var(--text-1);
+  border: 1px solid var(--hairline); border-radius: 6px; padding: 7px 10px;
+  font-family: var(--sans); font-size: 13px;
+}
+input[type="text"] { font-family: var(--mono); font-size: 12px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chip {
+  background: none; border: 1px solid var(--hairline); color: var(--text-2);
+  border-radius: 999px; padding: 3px 10px; font-size: 11px; font-family: var(--mono);
+  cursor: pointer;
+}
+.chip:hover { border-color: var(--accent); color: var(--text-1); }
+.chip.on { background: rgba(57,135,229,0.15); border-color: var(--accent); color: var(--text-1); }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+button.primary {
+  background: var(--accent); color: #fff; border: none; border-radius: 8px;
+  padding: 9px 18px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: var(--sans);
+}
+button.primary:hover { filter: brightness(1.12); }
+button.ghost {
+  background: none; color: var(--text-2); border: 1px solid var(--hairline);
+  border-radius: 8px; padding: 9px 14px; font-size: 13px; cursor: pointer;
+}
+button.ghost:hover { color: var(--text-1); border-color: var(--text-2); }
+.progress { font-family: var(--mono); font-size: 12px; color: var(--text-2); min-height: 1.2em; margin-top: 12px; }
+.errbox { margin-top: 10px; font-size: 12px; color: #e66767; font-family: var(--mono); }
+.errbox:empty { display: none; }
+
+/* stat tiles */
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 10px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.tile .k { font-size: 11px; color: var(--text-mut); text-transform: uppercase; letter-spacing: 0.05em; }
+.tile .v { font-size: 22px; font-weight: 650; margin-top: 2px; font-variant-numeric: tabular-nums; word-break: break-word; }
+.tile .d { font-size: 11px; color: var(--text-mut); margin-top: 2px; word-break: break-all; }
+
+/* bar charts */
+.barchart { display: flex; flex-direction: column; gap: 7px; }
+.brow { display: grid; grid-template-columns: minmax(90px, 22%) 1fr auto; gap: 8px; align-items: center; font-size: 12px; }
+.brow .bl { font-family: var(--mono); color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brow .track { background: var(--surface-2); border-radius: 3px; height: 14px; }
+.brow .fill { height: 14px; border-radius: 2px; min-width: 2px; }
+.brow .bv { font-family: var(--mono); color: var(--text-2); font-variant-numeric: tabular-nums; text-align: right; min-width: 60px; }
+.brow:hover .bv { color: var(--text-1); }
+
+/* tables */
+.twrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--hairline); white-space: nowrap; }
+th { color: var(--text-mut); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; cursor: pointer; user-select: none; position: sticky; top: 0; background: var(--surface); }
+th:hover { color: var(--text-1); }
+th.sorted { color: var(--accent); }
+td { font-variant-numeric: tabular-nums; }
+td.path { font-family: var(--mono); max-width: 420px; overflow: hidden; text-overflow: ellipsis; }
+td .ext { font-family: var(--mono); color: var(--accent); }
+.empty-note { color: var(--text-mut); font-size: 12px; padding: 8px 0; }
+#report { display: none; }
+@media print { .noprint { display: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Code Stats</h1>
+  <div class="sub">Point this at a project folder &mdash; it scans it entirely in your browser and reports the numbers. Nothing is uploaded.</div>
+
+  <div class="grid2">
+    <div class="card">
+      <strong>Scan settings</strong>
+      <label for="excl">Directories to skip (comma / space separated)</label>
+      <input type="text" id="excl" value=".git, node_modules">
+      <div class="chips" id="chips"></div>
+      <label for="maxsize">Max file size to read for line counts (MB)</label>
+      <input type="number" id="maxsize" value="10" min="0.1" step="0.5" style="width:120px">
+      <div class="row">
+        <button class="primary" id="pick">Choose project folder</button>
+        <button class="ghost" id="again" hidden>Scan another folder</button>
+        <button class="ghost" id="dl">Download report (JSON)</button>
+      </div>
+      <div class="progress" id="progress"></div>
+      <div class="errbox" id="errbox"></div>
+      <div id="noapi"></div>
+    </div>
+    <div class="card">
+      <strong>How to read this page</strong>
+      <div style="color:var(--text-2); font-size:12.5px; margin-top:8px">
+        1. Click <b>Choose project folder</b> and pick a project.<br>
+        2. The scan runs live in this tab (progress shown above).<br>
+        3. Stats, charts and tables render below as it completes.<br>
+        4. <b>Download report (JSON)</b> saves the full raw dataset.
+      </div>
+    </div>
+  </div>
+
+  <div id="report">
+    <h2>Summary</h2>
+    <div class="tiles" id="tiles"></div>
+
+    <h2>Charts</h2>
+    <div class="grid2">
+      <div class="card"><h2 style="margin-top:0">Lines by file type</h2><div class="barchart" id="c-lines"></div></div>
+      <div class="card"><h2 style="margin-top:0">Files by extension</h2><div class="barchart" id="c-files"></div></div>
+      <div class="card"><h2 style="margin-top:0">Files by directory depth</h2><div class="barchart" id="c-depth"></div></div>
+      <div class="card"><h2 style="margin-top:0">Lines-per-file distribution</h2><div class="barchart" id="c-dist"></div></div>
+    </div>
+
+    <h2>Tables</h2>
+    <div class="card" id="sec-top-lines"><h2 style="margin-top:0">Top 15 files by lines</h2><div class="twrap"><table id="t-lines"></table></div></div>
+    <div class="card" style="margin-top:14px"><h2 style="margin-top:0">Top 15 files by size</h2><div class="twrap"><table id="t-size"></table></div></div>
+    <div class="card" style="margin-top:14px"><h2 style="margin-top:0">Top 15 most recently modified</h2><div class="twrap"><table id="t-mod"></table></div></div>
+    <div class="card" style="margin-top:14px"><h2 style="margin-top:0">Top 15 directories by file count</h2><div class="twrap"><table id="t-dirfiles"></table></div></div>
+    <div class="card" style="margin-top:14px"><h2 style="margin-top:0">Top 15 directories by line count</h2><div class="twrap"><table id="t-dirlines"></table></div></div>
+    <div class="card" style="margin-top:14px"><h2 style="margin-top:0">File-type breakdown (top 25)</h2><div class="twrap"><table id="t-types"></table></div></div>
+    <div class="card" style="margin-top:14px"><h2 style="margin-top:0">Duplicate groups (same name + size)</h2><div class="twrap"><table id="t-dupes"></table></div></div>
+
+    <div class="row">
+      <span id="scanmeta" style="color:var(--text-mut); font-size:12px; font-family:var(--mono)"></span>
+    </div>
+  </div>
+</div>
+<script id="appjs">
+"use strict";
+const $ = id => document.getElementById(id);
+const el = {
+  excl: $("excl"), chips: $("chips"), maxsize: $("maxsize"),
+  pick: $("pick"), again: $("again"), dl: $("dl"),
+  progress: $("progress"), errbox: $("errbox"), noapi: $("noapi"),
+  report: $("report"), tiles: $("tiles"),
+  cLines: $("c-lines"), cFiles: $("c-files"), cDepth: $("c-depth"), cDist: $("c-dist"),
+  scanmeta: $("scanmeta"),
+};
+const CHART_COLORS = ["#3987e5","#d95926","#199e70","#c98500","#d55181","#008300","#9085e9","#e66767"];
+const LANG = {
+  js: "JavaScript", mjs: "JavaScript", cjs: "JavaScript", jsx: "JSX",
+  ts: "TypeScript", tsx: "TSX", py: "Python", md: "Markdown", json: "JSON",
+  css: "CSS", html: "HTML", htm: "HTML", rs: "Rust", go: "Go", java: "Java",
+  c: "C", h: "C/C++ header", cpp: "C++", cc: "C++", cxx: "C++", hpp: "C++ header",
+  cs: "C#", rb: "Ruby", php: "PHP", sh: "Shell", bash: "Shell", yaml: "YAML",
+  yml: "YAML", toml: "TOML", sql: "SQL", vue: "Vue", svelte: "Svelte",
+  dart: "Dart", swift: "Swift", kt: "Kotlin", kts: "Kotlin", scala: "Scala",
+  lua: "Lua", r: "R", pl: "Perl", xml: "XML", svg: "SVG", wasm: "WebAssembly",
+  graphql: "GraphQL", gql: "GraphQL", proto: "Protobuf", tf: "Terraform",
+  nim: "Nim", zig: "Zig", ex: "Elixir", exs: "Elixir", elm: "Elm",
+  fs: "F#", ml: "OCaml", hs: "Haskell", jl: "Julia", zig: "Zig",
+  txt: "Plain text", csv: "CSV", tsv: "TSV", lock: "Lockfile", wasm: "WebAssembly",
+  env: "Env config", cfg: "Config", ini: "Config", conf: "Config",
+};
+const BINARY_EXT = new Set(("png jpg jpeg gif bmp ico tiff webp avif svgz heic mp4 mov mkv avi webm wmv m4a mp3 wav ogg flac aac mid woff woff2 otf ttf eot eot pdf epub doc docx xls xlsx ppt pptx jar class dll so exe msi sys pdb dylib o a obj lib pyc pyo pycache pkl pkl pickle npy npz h5 zip tar gz bz2 xz 7z rar tgz cab ico2 psp vm vmx vmdk dockerfile.lock sqlite db db3 ndjson").split(" "));
+const QUICK_EXCLUDES = ["dist","build","__pycache__",".next",".venv","venv","target","vendor","bin","obj",".cache"];
+const fmt = new Intl.NumberFormat("en-US");
+const nf = n => fmt.format(Math.round(n || 0));
+function humanBytes(n) {
+  if (n == null) return "—";
+  if (n < 1024) return n + " B";
+  const u = ["KB","MB","GB","TB"]; let i = -1;
+  do { n /= 1024; i++; } while (n >= 1024 && i < u.length - 1);
+  return (n >= 100 ? Math.round(n) : n.toFixed(1)) + " " + u[i];
+}
+function extOf(name) {
+  const b = String(name).toLowerCase();
+  const i = b.lastIndexOf(".");
+  if (i < 0 || i === b.length - 1) return "(no ext)";
+  return b.slice(i + 1).slice(0, 8);
+}
+function depthOf(rel) { return rel.split("/").length; }
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function median(arr) {
+  if (!arr.length) return 0;
+  const a = arr.slice().sort((x, y) => x - y), m = a.length >> 1;
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const state = { running: false, files: [], errors: [], rootName: "" };
+
+function readExcludes() {
+  return el.excl.value.split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
+}
+function maxBytes() { return (parseFloat(el.maxsize.value) || 10) * 1024 * 1024; }
+
+async function sniffBinary(file) {
+  const ext = extOf(file.name);
+  if (ext !== "(no ext)" && BINARY_EXT.has(ext)) return true;
+  try {
+    const chunk = await file.slice(0, 8192).arrayBuffer();
+    if (chunk.byteLength === 0) return false;
+    const u8 = new Uint8Array(chunk);
+    let nulls = 0;
+    for (let i = 0; i < u8.length; i++) if (u8[i] === 0) nulls++;
+    return nulls >= Math.max(2, Math.floor(u8.length / 256));
+  } catch { return true; }
+}
+
+function analyzeText(text) {
+  const lines = text.split("\n");
+  if (lines[lines.length - 1] === "") lines.pop(); // trailing newline
+  const stats = { lines: lines.length, chars: text.length, blank: 0, comment: 0, crlf: 0, longestLine: 0 };
+  for (const raw of lines) {
+    let line = raw;
+    if (line.endsWith("\r")) { stats.crlf++; line = line.slice(0, -1); }
+    if (line.length > stats.longestLine) stats.longestLine = line.length;
+    const t = line.trim();
+    if (t === "") { stats.blank++; continue; }
+    if (/^(\/\/|#|\*|\/\*|<!--|;|--|['"])/.test(t)) stats.comment++;
+  }
+  return stats;
+}
+
+function setProgress(text) { el.progress.textContent = text; }
+function addErr(e) { state.errors.push(String((e && e.message) || e)); }
+
+async function scanFile(handle, relPath) {
+  const f = await handle.getFile();
+  const rec = {
+    path: relPath, name: handle.name, size: f.size, ext: extOf(handle.name),
+    modified: null, type: null, lines: 0, chars: 0, blank: 0, comment: 0, crlf: 0, longestLine: 0,
+  };
+  try { rec.modified = (await handle.getProperties()).lastModified; } catch { /* keep null */ }
+  state.files.push(rec);
+  if (f.size > maxBytes()) { rec.type = "skipped"; return; }
+  const isBin = await sniffBinary(handle);
+  rec.type = isBin ? "binary" : "text";
+  if (isBin) return;
+  try {
+    const text = await f.text();
+    Object.assign(rec, analyzeText(text));
+  } catch { rec.type = "binary"; }
+}
+
+async function scan() {
+  state.files = []; state.errors = [];
+  el.report.style.display = "none";
+  el.errbox.textContent = "";
+  setProgress("");
+  el.pick.disabled = true; el.again.hidden = true; el.dl.disabled = true;
+
+  let root;
+  try {
+    root = await window.showDirectoryPicker();
+  } catch (e) {
+    if (e && e.name === "AbortError") { resetBtns(); return; }
+    addErr("Could not open folder: " + ((e && e.message) || e));
+    el.errbox.textContent = state.errors[0];
+    resetBtns(); return;
+  }
+  state.rootName = root.name || "folder";
+  const exclude = new Set(readExcludes());
+  const q = [{ h: root, rel: "", depth: 0 }];
+  let folders = 0, maxDepth = 0, processed = 0;
+  const CONCURRENCY = 8;
+
+  while (q.length) {
+    if (state.errors.length > 50) break;
+    // process one directory's entries into the queue
+    const job = q.shift();
+    maxDepth = Math.max(maxDepth, job.depth);
+    const entries = [];
+    try {
+      for await (const entry of job.h.values()) entries.push(entry);
+    } catch (e) {
+      addErr("List " + job.rel + ": " + ((e && e.message) || e));
+      processed++;
+      setProgress("Scanned " + nf(processed) + " files · " + folders + " folders");
+      continue;
+    }
+    let batch = 0;
+    for (const entry of entries) {
+      const rel = job.rel ? job.rel + "/" + entry.name : entry.name;
+      const depth = job.depth + 1;
+      if (entry.kind === "directory") {
+        folders++;
+        if (exclude.has(entry.name)) continue;
+        q.push({ h: entry, rel, depth });
+        continue;
+      }
+      if (entry.kind !== "file") continue;
+      processed++;
+      const p = (async () => {
+        const fileHandle = entry;
+        try { await scanFile(fileHandle, rel); }
+        catch (e) { addErr(rel + ": " + ((e && e.message) || e)); }
+      })();
+      (state.active ||= new Set()).add(p);
+      if (state.active.size >= CONCURRENCY) {
+        const w = state.active.values().next().value;
+        state.active.delete(w);
+        await w;
+      }
+      if (++batch % 40 === 0) { setProgress("Scanned " + nf(processed) + " files · " + folders + " folders"); await sleep(0); }
+    }
+    setProgress("Scanned " + nf(processed) + " files · " + folders + " folders");
+    await sleep(0);
+  }
+  if (state.active) await Promise.all([...state.active]);
+  state.active = null;
+  setProgress("Scanned " + nf(processed) + " files · " + folders + " folders");
+  renderReport({ folders, maxDepth, rootName: state.rootName, startedAt: null });
+  el.pick.disabled = false; el.again.hidden = false; el.dl.disabled = false;
+}
+function resetBtns() { el.pick.disabled = false; el.again.hidden = false; el.dl.disabled = !state.files.length; }
+
+function renderTiles(meta) {
+  const F = state.files;
+  const textF = F.filter(f => f.type === "text");
+  const lineArr = textF.map(f => f.lines);
+  const totalLines = lineArr.reduce((a, b) => a + b, 0);
+  const totalChars = textF.reduce((a, f) => a + f.chars, 0);
+  const totalBytes = F.reduce((a, f) => a + (f.size || 0), 0);
+  const empty = F.filter(f => f.size === 0).length;
+  const exts = new Set(F.map(f => f.ext));
+  const longestPath = F.reduce((m, f) => Math.max(m, f.path.length), 0);
+  const longestName = F.reduce((m, f) => Math.max(m, f.name.length), 0);
+  const longestLineRec = textF.reduce((m, f) => (f.longestLine > (m ? m.longestLine : -1) ? f : m), null);
+  const day30 = F.filter(f => f.modified && (Date.now() - f.modified) < 30 * 86400000).length;
+  const cfiles = F.filter(f => f.type === "text" && f.crlf > 0).length;
+  const lfiles = F.filter(f => f.type === "text" && f.crlf === 0 && f.lines > 0).length;
+  const dupNames = {};
+  for (const f of F) { const k = f.name + "|" + f.size; (dupNames[k] ||= []).push(f); }
+  const dupGroups = Object.values(dupNames).filter(g => g.length > 1);
+
+  const tiles = [
+    ["Total files", nf(F.length)],
+    ["Total folders", nf(meta.folders)],
+    ["Max folder depth", String(meta.maxDepth)],
+    ["Total lines (text)", nf(totalLines)],
+    ["Total characters", nf(totalChars)],
+    ["Total size", humanBytes(totalBytes)],
+    ["Text files", nf(textF.length)],
+    ["Binary files", nf(F.length - textF.length)],
+    ["Empty files", nf(empty)],
+    ["Avg lines / text file", textF.length ? nf(totalLines / textF.length) : "—"],
+    ["Median lines / text file", textF.length ? nf(median(lineArr)) : "—"],
+    ["Distinct extensions", nf(exts.size)],
+    ["Longest path (chars)", nf(longestPath)],
+    ["Longest filename (chars)", nf(longestName)],
+    ["Longest line (chars)", longestLineRec ? nf(longestLineRec.longestLine) + "\n" : "—", longestLineRec ? longestLineRec.path : null],
+    ["Modified in last 30 days", nf(day30)],
+    ["Duplicate-name groups", nf(dupGroups.length)],
+    ["CRLF / LF files", nf(cfiles) + " / " + nf(lfiles)],
+    ["Scan errors", nf(state.errors.length)],
+  ];
+  el.tiles.innerHTML = tiles.map(([k, v, d]) =>
+    '<div class="tile"><div class="k">' + k + '</div><div class="v">' + esc(v) + '</div>' + (d ? '<div class="d">' + esc(d) + '</div>' : '') + '</div>'
+  ).join("");
+  state._extra = { totalBytes, totalLines, dupNames: dupNames, textF };
+}
+
+function barChart(node, rows, colorFn) {
+  // rows: [{label, value}], top N; adds "other" if needed
+  if (!rows.length) { node.innerHTML = '<div class="empty-note">No data.</div>'; return; }
+  const top = rows.slice(0, 12);
+  const rest = rows.slice(12);
+  const otherVal = rest.reduce((a, r) => a + r.value, 0);
+  if (otherVal > 0) top.push({ label: "other (" + rest.length + ")", value: otherVal, other: true });
+  const max = Math.max(...top.map(r => r.value), 1);
+  node.innerHTML = top.map((r, i) => {
+    const color = r.other ? "#555555" : (colorFn ? colorFn(i, r) : CHART_COLORS[i % 8]);
+    const w = Math.max(2, Math.round((r.value / max) * 1000) / 10);
+    return '<div class="brow"><span class="bl" title="' + esc(r.label) + '">' + esc(r.label) + '</span>' +
+      '<span class="track"><span class="fill" style="width:' + w + '%;background:' + color + '"></span></span>' +
+      '<span class="bv" title="' + nf(r.value) + '">' + nf(r.value) + '</span></div>';
+  }).join("");
+}
+
+const extColor = {}; // first-seen assignment; color follows the entity, not rank
+function colorForExt(ext) {
+  if (ext in extColor) return extColor[ext];
+  const free = CHART_COLORS.find(c => !Object.values(extColor).includes(c));
+  extColor[ext] = free || "#777777";
+  return extColor[ext];
+}
+
+function renderCharts() {
+  const F = state.files, textF = state._extra.textF;
+  const byExtFiles = {}, byExtLines = {};
+  for (const f of F) (byExtFiles[f.ext] ||= { label: f.ext, value: 0 }).value++;
+  for (const f of textF) { const e = byExtLines[f.ext] ||= { label: f.ext, value: 0 }; e.value += f.lines; }
+  barChart(el.cLines, Object.values(byExtLines).sort((a, b) => b.value - a.value), (_, r) => colorForExt(r.label));
+  barChart(el.cFiles, Object.values(byExtFiles).sort((a, b) => b.value - a.value), (_, r) => colorForExt(r.label));
+  const byDepth = {};
+  for (const f of F) { const d = depthOf(f.path) - 1; byDepth[d] = (byDepth[d] || 0) + 1; }
+  barChart(el.cDepth, Object.keys(byDepth).map(Number).sort((a, b) => a - b).map(d => ({ label: "depth " + d, value: byDepth[d] })));
+  const buckets = [[1,"1"],[9,"2–9"],[99,"10–99"],[999,"100–999"],[9999,"1–9k"],[99999,"10k–99k"],[Infinity,"100k+"]];
+  const dist = buckets.map(([max, label]) => ({ label, value: 0, min: max }));
+  for (const f of textF) { const b = dist.find(b => f.lines <= b.min); if (b) b.value++; }
+  barChart(el.cDist, dist);
+}
+
+// generic sortable table: cols = [{id, label, get(row)->display, val(row)->sortkey}]
+function makeTable(node, cols, rows) {
+  let sortKey = null, asc = true;
+  function render() {
+    const sorted = sortKey ? rows.slice().sort((a, b) => {
+      const av = cols[sortKey].val(a), bv = cols[sortKey].val(b);
+      return (av < bv ? -1 : av > bv ? 1 : 0) * (asc ? 1 : -1);
+    }) : rows;
+    node.innerHTML = "<thead><tr>" +
+      cols.map((c, i) => '<th class="' + (sortKey === i ? "sorted" : "") + '" data-i="' + i + '">' + c.label + (sortKey === i ? (asc ? " ↑" : " ↓") : "") + '</th>').join("") +
+      "</tr></thead><tbody>" +
+      sorted.map(r => "<tr>" + cols.map(c => c.cell(r)).join("") + "</tr>").join("") +
+      "</tbody>";
+    node.querySelectorAll("th").forEach(th => th.onclick = () => {
+      const i = +th.dataset.i;
+      if (sortKey === i) asc = !asc; else { sortKey = i; asc = false; }
+      render();
+    });
+  }
+  render();
+}
+const pathCell = p => '<td class="path" title="' + esc(p) + '">' + esc(p) + '</td>';
+const numCell = v => "<td>" + nf(v) + "</td>";
+
+function renderFileTables() {
+  const textF = state.files.filter(f => f.type === "text");
+  const top = arr => arr.slice().sort((a, b) => b.lines - a.lines).slice(0, 15);
+  const topBy = (key, n) => state.files.slice().sort((a, b) => b[key] - a[key]).slice(0, n);
+  const topMod = state.files.slice().sort((a, b) => (b.modified || 0) - (a.modified || 0)).slice(0, 15);
+  const sizeCol = { label: "size", val: r => r.size, cell: r => "<td>" + humanBytes(r.size) + "</td>" };
+  const linesCol = { label: "lines", val: r => r.lines, cell: r => numCell(r.lines) };
+  const extCol = { label: "type", val: r => r.ext, cell: r => '<td><span class="ext">' + esc(r.ext) + "</span></td>" };
+  const modCol = { label: "modified", val: r => r.modified || 0, cell: r => "<td>" + (r.modified ? new Date(r.modified).toLocaleString() : "—") + "</td>" };
+
+  makeTable($("t-lines"), baseCol2(linesCol, extCol), top(textF));
+  makeTable($("t-size"), baseCol2(sizeCol, extCol), topBy("size", 15));
+  makeTable($("t-mod"), baseCol2(modCol, sizeCol), topMod);
+}
+// small helper so we can compose column lists without repetition
+function baseCol2(a, b) { return [{ label: "path", val: r => r.path, cell: r => pathCell(r.path) }, a, b]; }
+
+function topDirs(n, byLines) {
+  const map = {};
+  for (const f of state.files) {
+    const dir = f.path.includes("/") ? f.path.slice(0, f.path.lastIndexOf("/")) : "(root)";
+    const m = map[dir] ||= { dir, files: 0, lines: 0, bytes: 0 };
+    m.files++; m.bytes += f.size; if (byLines) m.lines += f.lines;
+  }
+  return Object.values(map).sort((a, b) => (b.files || 0) - (a.files || 0) || b.lines - a.lines).slice(0, n);
+}
+function renderDirTables() {
+  const rowsF = topDirs(15, false);
+  const rowsL = topDirs(15, true).sort((a, b) => b.lines - a.lines);
+  makeTable($("t-dirfiles"), [
+    { label: "directory", val: r => r.dir, cell: r => '<td class="path" title="' + esc(r.dir) + '">' + esc(r.dir) + "</td>" },
+    { label: "files", val: r => r.files, cell: r => numCell(r.files) },
+    { label: "size", val: r => r.bytes, cell: r => "<td>" + humanBytes(r.bytes) + "</td>" },
+  ], rowsF);
+  makeTable($("t-dirlines"), [
+    { label: "directory", val: r => r.dir, cell: r => '<td class="path" title="' + esc(r.dir) + '">' + esc(r.dir) + "</td>" },
+    { label: "lines", val: r => r.lines, cell: r => numCell(r.lines) },
+    { label: "files", val: r => r.files, cell: r => numCell(r.files) },
+  ], rowsL);
+}
+function renderTypeTable() {
+  const byExt = {};
+  for (const f of state.files) {
+    const m = byExt[f.ext] ||= { ext: f.ext, files: 0, lines: 0, bytes: 0 };
+    m.files++; m.lines += f.lines; m.bytes += f.size;
+  }
+  const rows = Object.values(byExt).sort((a, b) => b.lines - a.lines || b.files - a.files).slice(0, 25);
+  makeTable($("t-types"), [
+    { label: "ext", val: r => r.ext, cell: r => '<td><span class="ext">' + esc(r.ext) + "</span></td>" },
+    { label: "language", val: r => LANG[r.ext] || "—", cell: r => "<td>" + esc(LANG[r.ext] || "—") + "</td>" },
+    { label: "files", val: r => r.files, cell: r => numCell(r.files) },
+    { label: "lines", val: r => r.lines, cell: r => numCell(r.lines) },
+    { label: "size", val: r => r.bytes, cell: r => "<td>" + humanBytes(r.bytes) + "</td>" },
+    { label: "avg lines/file", val: r => r.files ? r.lines / r.files : 0, cell: r => r.files ? "<td>" + nf(r.lines / r.files) + "</td>" : "<td>—</td>" },
+  ], rows);
+}
+function renderDupes() {
+  const groups = Object.values(state._extra.dupNames).filter(g => g.length > 1)
+    .map(g => ({ name: g[0].name, paths: g, size: g[0].size }))
+    .sort((a, b) => b.paths.length - a.paths.length).slice(0, 15);
+  if (!groups.length) { $("t-dupes").innerHTML = '<div class="empty-note">No duplicate name+size groups found.</div>'; return; }
+  makeTable($("t-dupes"), [
+    { label: "name", val: r => r.name, cell: r => '<td class="path">' + esc(r.name) + "</td>" },
+    { label: "copies", val: r => r.paths.length, cell: r => numCell(r.paths.length) },
+    { label: "size each", val: r => r.size, cell: r => "<td>" + humanBytes(r.size) + "</td>" },
+    { label: "locations (first 3)", val: r => r.paths.length, cell: r => '<td class="path">' + r.paths.slice(0, 3).map(p => esc(p.path)).join("<br>") + (r.paths.length > 3 ? "<br>…+" + (r.paths.length - 3) + " more" : "") + "</td>" },
+  ], groups);
+}
+
+function downloadJSON() {
+  if (!state.files.length) return;
+  const report = {
+    generatedAt: new Date().toISOString(), rootName: state.rootName,
+    excludes: readExcludes(), maxFileSizeMB: parseFloat(el.maxsize.value),
+    summary: {
+      files: state.files.length,
+      textFiles: state._extra.textF.length,
+      totalLines: state._extra.totalLines,
+      totalBytes: state._extra.totalBytes,
+      errors: state.errors.length,
+    },
+    files: state.files, errors: state.errors,
+  };
+  const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "code-stats-" + (state.rootName || "report") + ".json";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+function renderReport(meta) {
+  if (!state.files.length && meta.folders === 0) { setProgress("Folder is empty or unreadable."); return; }
+  renderTiles(meta);
+  renderCharts();
+  renderFileTables();
+  renderDirTables();
+  renderTypeTable();
+  renderDupes();
+  el.report.style.display = "block";
+  el.scanmeta.textContent = "scanned " + state.rootName + " · " + state.files.length + " files · " + meta.folders + " folders · " + state.errors.length + " errors";
+  if (state.errors.length) {
+    el.errbox.innerHTML = "Scan errors (" + state.errors.length + "):<br>" + state.errors.slice(0, 5).map(esc).join("<br>") + (state.errors.length > 5 ? "<br>…" : "");
+  }
+  el.report.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+function buildChips() {
+  QUICK_EXCLUDES.forEach(name => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "chip"; b.textContent = name; b.dataset.name = name;
+    b.onclick = () => {
+      const ex = readExcludes();
+      if (ex.includes(name)) {
+        b.classList.remove("on");
+        el.excl.value = ex.filter(x => x !== name).join(", ");
+      } else {
+        b.classList.add("on");
+        el.excl.value = (ex.length ? ex.join(", ") + ", " : "") + name;
+      }
+    };
+    el.chips.appendChild(b);
+  });
+}
+window.addEventListener("DOMContentLoaded", () => {
+  if (typeof window.showDirectoryPicker !== "function") {
+    el.noapi.innerHTML = '<div class="errbox" style="margin-top:12px">Your browser does not support the File System Access API. Open this page in <b>Chrome</b> or <b>Edge</b>.</div>';
+    el.pick.disabled = true;
+  }
+  el.pick.onclick = () => { buildChipsOnce(); scan(); };
+  el.again.onclick = () => scan();
+  el.dl.onclick = downloadJSON;
+  let chipsBuilt = false;
+  function buildChipsOnce() { if (!chipsBuilt) { buildChips(); chipsBuilt = true; } }
+});
+</script>
+</body>
+</html>
