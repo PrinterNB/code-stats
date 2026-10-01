@@ -84,7 +84,7 @@ button.ghost:hover { color: var(--text-1); border-color: var(--text-2); }
 .brow { display: grid; grid-template-columns: minmax(90px, 22%) 1fr auto; gap: 8px; align-items: center; font-size: 12px; }
 .brow .bl { font-family: var(--mono); color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .brow .track { background: var(--surface-2); border-radius: 3px; height: 14px; }
-.brow .fill { height: 14px; border-radius: 2px; min-width: 2px; }
+.brow .fill { display: block; height: 14px; border-radius: 2px; min-width: 2px; }
 .brow .bv { font-family: var(--mono); color: var(--text-2); font-variant-numeric: tabular-nums; text-align: right; min-width: 60px; }
 .brow:hover .bv { color: var(--text-1); }
 
@@ -433,7 +433,7 @@ function renderCharts(view) {
   const byDepth = {};
   for (const f of F) { const d = depthOf(f.path) - 1; byDepth[d] = (byDepth[d] || 0) + 1; }
   barChart(el.cDepth, Object.keys(byDepth).map(Number).sort((a, b) => a - b).map(d => ({ label: "depth " + d, value: byDepth[d] })));
-  const buckets = [[1,"1"],[9,"2–9"],[99,"10–99"],[999,"100–999"],[9999,"1–9k"],[99999,"10k–99k"],[Infinity,"100k+"]];
+  const buckets = [[0,"0"],[1,"1"],[9,"2–9"],[99,"10–99"],[999,"100–999"],[9999,"1–9k"],[99999,"10k–99k"],[Infinity,"100k+"]];
   const dist = buckets.map(([max, label]) => ({ label, value: 0, min: max }));
   for (const f of textF) { const b = dist.find(b => f.lines <= b.min); if (b) b.value++; }
   barChart(el.cDist, dist);
@@ -524,7 +524,7 @@ function renderDupes(view) {
   const groups = Object.values(view.dupNames).filter(g => g.length > 1)
     .map(g => ({ name: g[0].name, paths: g, size: g[0].size }))
     .sort((a, b) => b.paths.length - a.paths.length).slice(0, 15);
-  if (!groups.length) { $("t-dupes").innerHTML = '<div class="empty-note">No duplicate name+size groups found.</div>'; return; }
+  if (!groups.length) { $("t-dupes").innerHTML = '<tbody><tr><td colspan="4"><div class="empty-note" style="padding:8px">No duplicate name+size groups found.</div></td></tr></tbody>'; return; }
   makeTable($("t-dupes"), [
     { label: "name", val: r => r.name, cell: r => '<td class="path">' + esc(r.name) + "</td>" },
     { label: "copies", val: r => r.paths.length, cell: r => numCell(r.paths.length) },
